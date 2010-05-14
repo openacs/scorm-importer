@@ -2,13 +2,13 @@
 
 <queryset>
 
-    <fullquery name="scorm_importer::import.insert_package">
+    <fullquery name="scorm_importer::create_course.insert_package">
         <querytext>
           insert into cp_package (cp_package_id) values (:scorm_course_id)
         </querytext>
     </fullquery>
 
-    <fullquery name="scorm_importer::import.update_package">
+    <fullquery name="scorm_importer::create_course.update_package">
         <querytext>
           update cp_package
              set jsdata = :jsdata,

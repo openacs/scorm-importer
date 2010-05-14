@@ -5,20 +5,17 @@ ad_library {
 namespace eval scorm_importer {
 }
 
-ad_proc -public scorm_importer::import {
-    -tmp_dir:required
+ad_proc -public scorm_importer::create_course {
     -package_id:required
+    -manifest:required
+    -folder_id:required
+    {-scorm_course_id ""}
     {-online f}
-    {-default_lesson_mode normal}
+    {-default_lesson_mode browse}
     {-verbose_p 0}
 } {
-    set up basic structure for content package
+    Create a Scorm course skeleton based on a parsed manifest.
 } {
-
-    if { $verbose_p } { ns_write "<h1>SCORM Content Package import</h1> Processing files from $tmp_dir <br />" }
-
-    # grab manifest from tmp_dir and parse
-    dom parse [::tDOM::xmlReadFile $tmp_dir/imsmanifest.xml] manifest
 
     # build activity tree before we transform the document
     array set adl_info \
@@ -39,26 +36,13 @@ ad_proc -public scorm_importer::import {
     set organization_node [$document_element child all organization]
     set title [$organization_node getAttribute title ""]
 
-    # The name should be the tail of the file, with the UI guarding against uploading
-    # dupe courses, with the admin UI giving the option to delete/update courses, of course.
-
-    regexp {([^/\\]+)$} $tmp_dir match cr_dir
-    regsub -all { +} $cr_dir {_} name
-
-    set parent_folder_id [scorm_core::default_folder_id -package_id $package_id]
-    set folder_id [scorm_importer::import_dir \
-                      -dir $tmp_dir \
-                      -name $name \
-                      -label $title \
-                      -parent_id $parent_folder_id \
-                      -package_id $package_id \
-                      -verbose_p $verbose_p]
-
     set var_list [subst {
         {folder_id $folder_id}
         {context_id $package_id}
         {type scorm2004}
         {online $online}
+        {title "$title"}
+        {scorm_course_id $scorm_course_id}
         {default_lesson_mode $default_lesson_mode}
     }]
     set scorm_course_id [package_instantiate_object -var_list $var_list scorm_course]
@@ -80,7 +64,72 @@ ad_proc -public scorm_importer::import {
     $transform delete
     $manifest delete
 
-    if { $verbose_p } { ns_write "<h2>All Done!<h2/>" }
+}
+
+ad_proc scorm_importer::create_subfolder {
+    -name:required
+    -parent_id:required
+    -package_id:required
+} {
+} {
+    set folder_id [content::folder::new \
+                      -name $name \
+                      -parent_id $parent_id \
+                      -package_id $package_id]
+
+    content::folder::register_content_type \
+        -folder_id $folder_id  \
+        -content_type content_revision \
+        -include_subtypes "t"
+
+    content::folder::register_content_type \
+        -folder_id $folder_id \
+        -content_type content_item \
+        -include_subtypes t
+
+    return $folder_id
+}
+
+ad_proc -public scorm_importer::import {
+    -tmp_dir:required
+    -package_id:required
+    {-online f}
+    {-default_lesson_mode normal}
+} {
+    set up basic structure for content package
+} {
+
+    # Grab manifest from tmp_dir and parse.
+    dom parse [::tDOM::xmlReadFile $tmp_dir/imsmanifest.xml] manifest
+
+    # Create the target folder for the course import.
+
+    # The name should be the tail of the file, with the UI guarding against uploading
+    # dupe courses, with the admin UI giving the option to delete/update courses, of course.
+
+    regexp {([^/\\]+)$} $tmp_dir match cr_dir
+    regsub -all { +} $cr_dir {_} name
+
+    set parent_folder_id [scorm_core::default_folder_id -package_id $package_id]
+    set folder_id [scorm_importer::create_subfolder \
+                      -name $name \
+                      -parent_id $parent_folder_id \
+                      -package_id $package_id]
+
+    # Now create the course from the manifest.
+    set scorm_course_id [scorm_importer::create_course \
+        -package_id $package_id \
+        -folder_id $folder_id \
+        -manifest $manifest \
+        -online $online \
+        -default_lesson_mode $default_lesson_mode]
+
+    # Copy the files into the course folder in the content repository.
+
+    scorm_importer::import_files \
+        -dir $tmp_dir \
+        -folder_id $folder_id \
+        -package_id $package_id
 
 }
 
@@ -184,41 +233,22 @@ ad_proc scorm_importer::import_node {
     return
 }
 
-ad_proc scorm_importer::import_dir {
+ad_proc scorm_importer::import_files {
     -dir:required
-    -name:required
-    -label:required
-    -parent_id:required
+    -folder_id:required
     -package_id:required
-    {-indb_p 0}
-    {-verbose_p 0}
 } {
-
-    set folder_id [content::folder::new \
-                      -name $name \
-                      -label $label \
-                      -parent_id $parent_id \
-                      -package_id $package_id]
-
-    content::folder::register_content_type \
-        -folder_id $folder_id  \
-        -content_type content_revision \
-        -include_subtypes "t"
-
-    content::folder::register_content_type \
-        -folder_id $folder_id \
-        -content_type content_item \
-        -include_subtypes t
 
     foreach file_name [glob -directory $dir *] {
         set cr_file_name [file tail $file_name]
         if { [file isdirectory $file_name] } {
-            scorm_importer::import_dir \
+            scorm_importer::import_files \
                  -dir $file_name \
-                 -name $cr_file_name \
-                 -label $cr_file_name \
-                 -parent_id $folder_id \
-                 -package_id $package_id
+                 -package_id $package_id \
+                 -folder_id [scorm_importer::create_subfolder \
+                                -name $cr_file_name \
+                                -parent_id $folder_id \
+                                -package_id $package_id]
         } else {
             content::item::new \
                 -name $cr_file_name \
@@ -228,5 +258,4 @@ ad_proc scorm_importer::import_dir {
                 -mime_type [cr_filename_to_mime_type $file_name]
         }
     }
-    return $folder_id
 }
