@@ -12,19 +12,20 @@ ad_proc -public scorm_importer::create_course {
     {-scorm_course_id ""}
     {-online f}
     {-default_lesson_mode browse}
-    {-verbose_p 0}
 } {
     Create a Scorm course skeleton based on a parsed manifest.
 } {
 
     # build activity tree before we transform the document
     array set adl_info \
-        [scorm_importer::rte_activity_tree::create \
-            -manifest [$manifest documentElement] \
-            -verbose_p $verbose_p]
+        [scorm_importer::rte_activity_tree::create -manifest [$manifest documentElement]]
 
     set activity_tree $adl_info(activity_tree)
     set global_to_system [expr { [string is true $adl_info(global)] ? "t" : "f" }]
+
+    # Ilias saves the transformed document in XML.  We will store the original in order
+    # to facilitate course export. 
+    set xmldata [$manifest asXML]
 
     # transform scorm xml using ilias's normalizing xsl
     set xsl_src "[acs_root_dir]/packages/scorm-importer/templates/xsl/op/op-scorm13.xsl"
@@ -32,7 +33,6 @@ ad_proc -public scorm_importer::create_course {
     $manifest xslt $transform manifest
     set document_element [$manifest documentElement]
 
-    set xmldata [$manifest asXML]
     set organization_node [$document_element child all organization]
     set title [$organization_node getAttribute title ""]
 
@@ -50,14 +50,9 @@ ad_proc -public scorm_importer::create_course {
     # create row for package even though we don't have any info yet
     db_dml insert_package {}
 
-    import_manifest \
-        -cp_package_id $scorm_course_id \
-        -manifest $document_element \
-        -verbose_p $verbose_p
+    import_node -cp_package_id $scorm_course_id -node $document_element
 
-    set jsdata [scorm_importer::rte_jsdata::create \
-                   -manifest $document_element \
-                   -verbose_p $verbose_p]
+    set jsdata [scorm_importer::rte_jsdata::create -manifest $document_element]
 
     db_dml update_package {}
 
@@ -133,49 +128,25 @@ ad_proc -public scorm_importer::import {
 
 }
 
-ad_proc scorm_importer::import_manifest {
-    -cp_package_id:required
-    -manifest:required
-    {-verbose_p 0}
-} {
-    build db structures for course
-} {
-
-    # set up lft as global so we can track children inside 
-    # import_node and can update rgt
-    global lft
-    set lft 1
-
-    # import all nodes, starting with root (manifest)
-    import_node -node $manifest -cp_package_id $cp_package_id -verbose_p $verbose_p
-
-}
-
 ad_proc scorm_importer::import_node {
     {-node:required}
     {-cp_package_id:required}
     {-depth 1}
     {-parent 0}
-    {-verbose_p 0}
 } {
     Import given node
 } {
 
-    # bring in lft
-    global lft
-
     set nodename [$node nodeName]
-    if { $verbose_p } { ns_write "$nodename " }
     
     # create the node
-    set cp_node_id [db_nextval cp_node_cp_node_id_seq]
+    set cp_node_id [db_nextval cp_node_seq]
+    set rgt $cp_node_id
+
     db_dml insert_cp_node {}
 
     # and insert into tree
     db_dml add_to_cp_tree {}
-
-    # set up next child or, if none, rgt (see below)
-    incr lft
 
     # gather attributes for insertion, starting with cp_node_id
     set attributes [list cp_node_id]
@@ -220,17 +191,14 @@ ad_proc scorm_importer::import_node {
 
     # run sub nodes
     foreach child [$node childNodes] {
-        import_node -node $child -cp_package_id $cp_package_id \
-            -depth [expr $depth + 1] -parent $cp_node_id -verbose_p $verbose_p
+        set rgt [import_node -node $child -cp_package_id $cp_package_id \
+                    -depth [expr $depth + 1] -parent $cp_node_id]
     }
 
     # update cp_tree
     db_dml update_rgt {}
 
-    # set up next child
-    incr lft
-
-    return
+    return $rgt
 }
 
 ad_proc scorm_importer::import_files {

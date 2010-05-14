@@ -31,9 +31,9 @@
     <fullquery name="scorm_importer::import_node.add_to_cp_tree">
         <querytext>
           insert into cp_tree
-          (child, depth, lft, cp_package_id, parent, rgt)
+          (child, depth, cp_package_id, parent, rgt)
           values
-          (:cp_node_id, :depth, :lft, :cp_package_id, :parent, '0')
+          (:cp_node_id, :depth, :cp_package_id, :parent, '0')
         </querytext>
     </fullquery>
 
@@ -48,7 +48,7 @@
 
     <fullquery name="scorm_importer::import_node.update_rgt">
         <querytext>
-          update cp_tree set rgt = :lft where child = :cp_node_id
+          update cp_tree set rgt = :rgt where child = :cp_node_id
         </querytext>
     </fullquery>
 
