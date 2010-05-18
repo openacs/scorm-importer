@@ -5,7 +5,7 @@ ad_library {
 namespace eval scorm_importer {
 }
 
-ad_proc -public scorm_importer::create_course {
+ad_proc scorm_importer::create_course {
     -package_id:required
     -manifest:required
     -folder_id:required
@@ -16,24 +16,19 @@ ad_proc -public scorm_importer::create_course {
     Create a Scorm course skeleton based on a parsed manifest.
 } {
 
-    # build activity tree before we transform the document
-    array set adl_info \
-        [scorm_importer::rte_activity_tree::create -manifest [$manifest documentElement]]
+    # Version check.  At the moment, it's scorm 2004 or or else it's an error.
+    set metadata [[$manifest documentElement] child 1 metadata]
+    set schemaversion [$metadata child 1 schemaversion]
+    if { $schemaversion eq "" ||
+         [string trim [string tolower [$schemaversion nodeValue]]] eq "adl scorm" &&
+         [string trim [string tolower [$schemaversion nodeValue]]] eq "2004 3rd edition" } {
+        return -code error [_ scorm-importer.NotSCORM2004]
+    }
 
-    set activity_tree $adl_info(activity_tree)
-    set global_to_system [expr { [string is true $adl_info(global)] ? "t" : "f" }]
+    set transform [scorm_importer::transform -manifest $manifest]
+    set transform_doc [$transform documentElement]
 
-    # Ilias saves the transformed document in XML.  We will store the original in order
-    # to facilitate course export. 
-    set xmldata [$manifest asXML]
-
-    # transform scorm xml using ilias's normalizing xsl
-    set xsl_src "[acs_root_dir]/packages/scorm-importer/templates/xsl/op/op-scorm13.xsl"
-    dom parse [::tDOM::xmlReadFile $xsl_src] transform
-    $manifest xslt $transform manifest
-    set document_element [$manifest documentElement]
-
-    set organization_node [$document_element child all organization]
+    set organization_node [$transform_doc child all organization]
     set title [$organization_node getAttribute title ""]
 
     set var_list [subst {
@@ -50,22 +45,69 @@ ad_proc -public scorm_importer::create_course {
     # create row for package even though we don't have any info yet
     db_dml insert_package {}
 
-    import_node -cp_package_id $scorm_course_id -node $document_element
+    scorm_importer::update_rte_data \
+        -scorm_course_id $scorm_course_id \
+        -manifest $manifest \
+        -transform_doc $transform_doc
 
-    set jsdata [scorm_importer::rte_jsdata::create -manifest $document_element]
+    $transform delete
+}
+
+ad_proc scorm_importer::edit_course {
+    -manifest:required
+    -scorm_course_id:required
+} {
+    Edit the course information.
+} {
+
+    set transform [scorm_importer::transform -manifest $manifest]
+
+    scorm_importer::update_rte_data \
+        -scorm_course_id $scorm_course_id \
+        -manifest $manifest \
+        -transform_doc [$transform documentElement]
+
+    $transform delete
+}
+
+ad_proc scorm_importer::update_rte_data {
+    -scorm_course_id:required
+    -manifest:required
+    -transform_doc:required
+} {
+    Update the RTE data - activity tree, jsdata, xmldata
+} {
+    # build activity tree with the original document.
+    array set adl_info \
+        [scorm_importer::rte_activity_tree::create -manifest [$manifest documentElement]]
+
+    set activity_tree $adl_info(activity_tree)
+    set global_to_system [expr { [string is true $adl_info(global)] ? "t" : "f" }]
+
+    import_node -cp_package_id $scorm_course_id -node $transform_doc
+    set xmldata [$transform_doc asXML]
+
+    set jsdata [scorm_importer::rte_jsdata::create -manifest $transform_doc]
 
     db_dml update_package {}
 
-    $transform delete
-    $manifest delete
-
 }
 
-ad_proc scorm_importer::create_subfolder {
+ad_proc scorm_importer::transform {
+    -manifest:required
+} {
+    Transfrom the manifest using ilias's normalizing xsl.
+} {
+    set xsl_src "[acs_root_dir]/packages/scorm-importer/templates/xsl/op/op-scorm13.xsl"
+    return [$manifest xslt [dom parse [::tDOM::xmlReadFile $xsl_src]]]
+}
+
+ad_proc scorm_importer::create_folder {
     -name:required
     -parent_id:required
     -package_id:required
 } {
+    Create a subr (or main) for a class with the necessary 
 } {
     set folder_id [content::folder::new \
                       -name $name \
@@ -85,7 +127,7 @@ ad_proc scorm_importer::create_subfolder {
     return $folder_id
 }
 
-ad_proc -public scorm_importer::import {
+ad_proc scorm_importer::import {
     -tmp_dir:required
     -package_id:required
     {-online f}
@@ -106,7 +148,7 @@ ad_proc -public scorm_importer::import {
     regsub -all { +} $cr_dir {_} name
 
     set parent_folder_id [scorm_core::default_folder_id -package_id $package_id]
-    set folder_id [scorm_importer::create_subfolder \
+    set folder_id [scorm_importer::create_folder \
                       -name $name \
                       -parent_id $parent_folder_id \
                       -package_id $package_id]
@@ -118,6 +160,7 @@ ad_proc -public scorm_importer::import {
         -manifest $manifest \
         -online $online \
         -default_lesson_mode $default_lesson_mode]
+    $manifest delete
 
     # Copy the files into the course folder in the content repository.
 
@@ -128,17 +171,20 @@ ad_proc -public scorm_importer::import {
 
 }
 
+# This needs to be fixed to skip nodes that already exist, by selecting a unique node
+# for the package using the attributes ...
 ad_proc scorm_importer::import_node {
     {-node:required}
     {-cp_package_id:required}
     {-depth 1}
     {-parent 0}
 } {
-    Import given node
+    Import a node and its children.
+
 } {
 
     set nodename [$node nodeName]
-    
+
     # create the node
     set cp_node_id [db_nextval cp_node_seq]
     set rgt $cp_node_id
@@ -158,10 +204,11 @@ ad_proc scorm_importer::import_node {
 
     # [lassign $a name namespace uri]
 
-    # however, the uri may be empty and the name and namespace equal. In that case, the attribute appears
-    # to be a definition of the uri for the namespace given by $name, although the uri thus defined is not 
-    # returned in the uri field, the uri-defining attribute is named as if it were $ns:$ns. Finally, the 
-    # {xmlns {} {}} form appears to be special, and to indicate that the xmlns namespace's uri is being defined. 
+    # however, the uri may be empty and the name and namespace equal. In that case, the
+    # attribute appears to be a definition of the uri for the namespace given by $name,
+    # although the uri thus defined is not returned in the uri field, the uri-defining
+    #attribute is named as if it were $ns:$ns. Finally, the {xmlns {} {}} form appears
+    #to be special, and to indicate that the xmlns namespace's uri is being defined. 
 
     # build up generic attribute list for insertion
     foreach attribute [$node attributes] {
@@ -195,7 +242,6 @@ ad_proc scorm_importer::import_node {
                     -depth [expr $depth + 1] -parent $cp_node_id]
     }
 
-    # update cp_tree
     db_dml update_rgt {}
 
     return $rgt
@@ -206,14 +252,13 @@ ad_proc scorm_importer::import_files {
     -folder_id:required
     -package_id:required
 } {
-
     foreach file_name [glob -directory $dir *] {
         set cr_file_name [file tail $file_name]
         if { [file isdirectory $file_name] } {
             scorm_importer::import_files \
                  -dir $file_name \
                  -package_id $package_id \
-                 -folder_id [scorm_importer::create_subfolder \
+                 -folder_id [scorm_importer::create_folder \
                                 -name $cr_file_name \
                                 -parent_id $folder_id \
                                 -package_id $package_id]

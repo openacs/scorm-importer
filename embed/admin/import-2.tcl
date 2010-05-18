@@ -33,19 +33,14 @@ if { ![empty_string_p $upload_file] &&
     ad_script_abort
 }
 
-scorm_importer::import \
+if { [catch {scorm_importer::import \
                 -package_id [ad_conn package_id] \
                 -tmp_dir $tmp_dir \
                 -online $online \
-                -default_lesson_mode $default_lesson_mode
-#if { [catch {scorm_importer::import \
-#                -package_id [ad_conn package_id] \
-#                -tmp_dir $tmp_dir \
-#                -online $online \
-#                -default_lesson_mode $default_lesson_mode} errMsg] } {
-#    ad_return_complaint 1 "[_ scorm-importer.Import_failed]: $errMsg"
-#    ad_script_abort
-#}
+                -default_lesson_mode $default_lesson_mode} errMsg] } {
+    ad_return_complaint 1 "[_ scorm-importer.Import_failed]: $errMsg"
+    ad_script_abort
+}
 
 file delete -force $tmp_dir
 

@@ -6,6 +6,7 @@
 <msg key="Import_failed">Import failed</msg>
 <msg key="No">No</msg>
 <msg key="Normal">Normal</msg>
+<msg key="NotSCORM2004">The course is not a SCORM 2004 package.</msg>
 <msg key="Online">Online</msg>
 <msg key="Select_course">Select SCORM 2004 course to upload</msg>
 <msg key="The_uploaded_file_doe">The uploaded file does not exist.</msg>
