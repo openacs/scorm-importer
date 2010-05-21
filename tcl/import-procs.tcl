@@ -9,9 +9,10 @@ ad_proc scorm_importer::create_course {
     -package_id:required
     -manifest:required
     -folder_id:required
-    {-scorm_course_id ""}
+    {-course_id ""}
     {-online f}
     {-default_lesson_mode browse}
+    {-course_type scorm_course}
 } {
     Create a Scorm course skeleton based on a parsed manifest.
 } {
@@ -37,16 +38,17 @@ ad_proc scorm_importer::create_course {
         {type scorm2004}
         {online $online}
         {title "$title"}
-        {scorm_course_id $scorm_course_id}
+        {object_type $course_type}
+        {${course_type}_id $course_id}
         {default_lesson_mode $default_lesson_mode}
     }]
-    set scorm_course_id [package_instantiate_object -var_list $var_list scorm_course]
+    set course_id [package_instantiate_object -var_list $var_list $course_type]
 
     # create row for package even though we don't have any info yet
     db_dml insert_package {}
 
     scorm_importer::update_rte_data \
-        -scorm_course_id $scorm_course_id \
+        -scorm_course_id $course_id \
         -manifest $manifest \
         -transform_doc $transform_doc
 
@@ -55,7 +57,7 @@ ad_proc scorm_importer::create_course {
 
 ad_proc scorm_importer::edit_course {
     -manifest:required
-    -scorm_course_id:required
+    -course_id:required
 } {
     Edit the course information.
 } {

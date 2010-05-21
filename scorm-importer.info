@@ -13,6 +13,8 @@
         <owner url="mailto:admin@hub.partners.org">Hub System Administrator</owner>
         <maturity>0</maturity>
 
+        <summary>Embeddable package that manages the import of SCORM archives</summary>
+
         <provides url="scorm-importer" version="0.1d1"/>
         <requires url="scorm-core" version="0.1d1"/>
 

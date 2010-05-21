@@ -7,7 +7,7 @@
           insert into cp_package
             (cp_package_id)
           values
-            (:scorm_course_id)
+            (:course_id)
         </querytext>
     </fullquery>
 
