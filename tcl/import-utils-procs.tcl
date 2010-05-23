@@ -1,5 +1,6 @@
 ad_library {
-
+    This provides an archive expander in the util namespace that should eventually
+    probably go into acs-tcl.
 }
 
 namespace eval util {
