@@ -53,7 +53,8 @@ ad_proc scorm_importer::import_files {
                 -parent_id $folder_id \
                 -package_id $package_id \
                 -tmp_filename $file_name \
-                -mime_type [cr_filename_to_mime_type $file_name]
+                -mime_type [cr_filename_to_mime_type $file_name] \
+                -is_live t
         }
     }
 }
