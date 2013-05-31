@@ -23,7 +23,7 @@ ad_proc -public util::archive::expand_file {
 
 } {
     set tmp_dir [file join [file dirname $tmpfile] [ns_mktemp "$dest_dir_base-XXXXXX"]]
-    if [catch { ns_mkdir $tmp_dir } errMsg ] {
+    if [catch { file mkdir $tmp_dir } errMsg ] {
         ns_log Notice "util::archive::expand_file: Error creating directory $tmp_dir: $errMsg"
         return -code error "util::archive::expand_file: Error creating directory $tmp_dir: $errMsg"
     }
