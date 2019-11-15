@@ -41,7 +41,7 @@ ad_proc -public util::archive::expand_file {
     } elseif {[regexp {.zip$} $upload_file]} {
         set type zip
     } else {
-        set type "Uknown type"
+        set type "Unknown type"
     }
 
     switch $type {
