@@ -14,7 +14,7 @@ ad_proc scorm_importer::import {
     set up basic structure for content package
 } {
 
-    dom parse [::tDOM::xmlReadFile $tmp_dir/imsmanifest.xml] manifest
+    dom parse [::tdom::xmlReadFile $tmp_dir/imsmanifest.xml] manifest
 
     db_transaction {
         # Now create the course from the manifest.
