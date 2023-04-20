@@ -85,7 +85,7 @@ ad_proc -public util::archive::expand_file {
     }
 
     if {$errp} {
-        exec rm -fr $tmp_dir
+        ::file delete -force -- $tmp_dir
         ns_log Notice "util::archive::expand_file: extract type $type failed $errMsg"
         return -code error "util::archive::expand_file: extract type $type failed $errMsg"
     }
